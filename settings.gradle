@@ -1,0 +1,3 @@
+include ':stories'
+include ':app'
+rootProject.name = "Insta Stories"
