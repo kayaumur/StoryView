@@ -42,7 +42,7 @@ class StoriesFragment : Fragment() {
         storyGroup.story.add(story)
         storyGroup.story.add(story)
         val story2 = Story()
-        story2.storyUrl = "https://www.youtube.com/watch?v=FoMlSB6ftQg"
+        story2.storyUrl = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
         story2.isPicture = false
         story2.isSeen = false
         story2.isVideo = true

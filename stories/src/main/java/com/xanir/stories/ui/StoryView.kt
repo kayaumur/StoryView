@@ -9,12 +9,16 @@ import android.net.Uri
 import android.os.Build
 import android.os.CountDownTimer
 import android.util.AttributeSet
-import android.view.*
+import android.view.GestureDetector
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.GestureDetectorCompat
+import androidx.lifecycle.*
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
@@ -30,7 +34,6 @@ import com.xanir.stories.StoryActivity
 import com.xanir.stories.databinding.StoryProgressBarBinding
 import com.xanir.stories.databinding.StoryViewBinding
 import com.xanir.stories.models.StoryGroup
-import com.xanir.stories.pagination.StoriesFragment
 import com.xanir.stories.pagination.StoriesRootFragment
 import kotlin.math.abs
 
@@ -38,7 +41,7 @@ import kotlin.math.abs
 /**
  * Created by Umur Kaya on 19-Sep-20.
  */
-class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
+class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleObserver{
 
     private lateinit var storyViewBinding: StoryViewBinding
     private var stories : StoryGroup? = null
@@ -48,7 +51,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
     private var isPaused = false
     private var totalDuration = 5000
     private var currentDuration = 0
-    private lateinit var simpleExoPlayer : SimpleExoPlayer
+    private var simpleExoPlayer : SimpleExoPlayer? = null
     private lateinit var gestureDetector : GestureDetectorCompat
 
     constructor(context: Context) : super(context) {
@@ -78,6 +81,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
     }
 
     private fun init(context: Context) {
+        (context as LifecycleOwner).lifecycle.addObserver(this)
         storyViewBinding = StoryViewBinding.inflate(LayoutInflater.from(context), this, true)
         //TODO If first element of view pager, remove it
         //TODO Make it lifecycle aware to pause timers/stop player etc.
@@ -162,38 +166,38 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
         }).submit()
     }
 
-    private fun loadVideo(url: String){
-        simpleExoPlayer = SimpleExoPlayer.Builder(context).setUseLazyPreparation(true).build()
-        val dataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(
-            context, Util.getUserAgent(
-                context,
-                context.packageName
+    private fun loadVideo(url: String) {
+        simpleExoPlayer = SimpleExoPlayer.Builder(context).setUseLazyPreparation(true).build().apply {
+            val dataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(
+                context, Util.getUserAgent(context, context.packageName)
             )
-        )
-        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(
-            Uri.parse(
-                "https://www.youtube.com/watch?v=FoMlSB6ftQg"
-            )
-        )
-        simpleExoPlayer.prepare(mediaSource)
-        simpleExoPlayer.playWhenReady = true
-        simpleExoPlayer.repeatMode = Player.REPEAT_MODE_OFF
-        storyViewBinding.playerView.hideController()
-        storyViewBinding.playerView.apply {
-            player = simpleExoPlayer
-            simpleExoPlayer.playWhenReady = true
-        }
-        simpleExoPlayer.addListener(object : Player.EventListener {
-            override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
-                super.onPlayerStateChanged(playWhenReady, playbackState)
-                if (playbackState == Player.STATE_READY && playWhenReady) {
-                    remainingTimeBar[currentStoryNumber].max = simpleExoPlayer.duration.toInt()
-                    remainingTimeBar[currentStoryNumber].incrementProgressBy(1)
-                    createTimer(simpleExoPlayer.contentDuration)
-                    timer.start()
-                }
+            val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(Uri.parse(url))
+            this.prepare(mediaSource)
+            this.playWhenReady = true
+            this.repeatMode = Player.REPEAT_MODE_OFF
+            storyViewBinding.playerView.hideController()
+            storyViewBinding.playerView.also { playerView ->
+                playerView.player = this
+                this.playWhenReady = true
             }
-        })
+            this.addListener(object : Player.EventListener {
+                override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+                    super.onPlayerStateChanged(playWhenReady, playbackState)
+                    if (playbackState == Player.STATE_READY && playWhenReady) {
+                        simpleExoPlayer?.let {
+                            remainingTimeBar[currentStoryNumber].max = it.duration.toInt()
+                            remainingTimeBar[currentStoryNumber].incrementProgressBy(1)
+                            createTimer(it.contentDuration)
+                            timer.start()
+                        }
+                    } else if (playbackState == Player.STATE_ENDED) {
+                        goToNext()
+                    }
+                }
+            })
+            return@apply
+        }
     }
 
     private fun createTimer(time: Long) : CountDownTimer {
@@ -226,35 +230,74 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
     }
 
     private fun goToNext(){
-        timer.cancel()
-        isPaused = true
+        commonForChanges()
         stories?.story!![currentStoryNumber].isSeen = true
         if(currentStoryNumber < stories?.story!!.size){
-            remainingTimeBar[currentStoryNumber].progress = 100
-            currentStoryNumber++
             if(stories?.story!![currentStoryNumber].isPicture){
-                loadImage(stories?.story!![currentStoryNumber].storyUrl)
+                goToNextPicture()
             }
             else if(stories?.story!![currentStoryNumber].isVideo){
-                loadVideo(stories?.story!![currentStoryNumber].storyUrl)
+                goToNextVideo()
             }
         }
         else if(context is StoryActivity){
-            (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
-                val position = it.fragmentStoriesBinding.storiesPager.currentItem
-                if(it.fragmentStoriesBinding.storiesPager.adapter!!.itemCount > position + 1){
-                    it.fragmentStoriesBinding.storiesPager.setCurrentItem(position + 1,false)
-                }
-                else{
-                    (context as StoryActivity).onBackPressed()
-                }
+            goToNextViewPagerElement()
+        }
+    }
+
+    private fun goToNextViewPagerElement(){
+        (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
+            val position = it.fragmentStoriesBinding.storiesPager.currentItem
+            if(it.fragmentStoriesBinding.storiesPager.adapter!!.itemCount > position + 1){
+                it.fragmentStoriesBinding.storiesPager.setCurrentItem(position + 1, false)
+            }
+            else{
+                (context as StoryActivity).onBackPressed()
             }
         }
     }
 
-    private fun goToPrevious(){
+    private fun goToNextPicture(){
+        remainingTimeBar[currentStoryNumber].progress = 5000
+        storyViewBinding.progressBars.postInvalidate()
+        currentStoryNumber++
+        storyViewBinding.containerImage.visibility = VISIBLE
+        storyViewBinding.playerView.visibility = GONE
+        loadImage(stories?.story!![currentStoryNumber].storyUrl)
+    }
+
+    private fun goToNextVideo(){
+        remainingTimeBar[currentStoryNumber].progress = totalDuration
+        storyViewBinding.progressBars.postInvalidate()
+        currentStoryNumber++
+        storyViewBinding.playerView.visibility = VISIBLE
+        storyViewBinding.containerImage.visibility = GONE
+        loadVideo(stories?.story!![currentStoryNumber].storyUrl)
+    }
+
+    private fun goToPreviousViewPagerElement(){
+        (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
+            val position = it.fragmentStoriesBinding.storiesPager.currentItem
+            if(position > 0){
+                it.fragmentStoriesBinding.storiesPager.setCurrentItem(position - 1, false)
+            }
+            else{
+                (context as StoryActivity).onBackPressed()
+            }
+        }
+    }
+
+    private fun commonForChanges(){
         timer.cancel()
         isPaused = true
+        simpleExoPlayer?.let {
+            it.stop()
+            it.release()
+        }
+    }
+
+    private fun goToPrevious(){
+        commonForChanges()
         stories?.story!![currentStoryNumber].isSeen = false
         if(currentStoryNumber < stories?.story!!.size){
             remainingTimeBar[currentStoryNumber].progress = 0
@@ -266,17 +309,10 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
                 loadVideo(stories?.story!![currentStoryNumber].storyUrl)
             }
             remainingTimeBar[currentStoryNumber].progress = 0
+            storyViewBinding.progressBars.postInvalidate()
         }
         else if(context is StoryActivity){
-            (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
-                val position = it.fragmentStoriesBinding.storiesPager.currentItem
-                if(position > 0){
-                    it.fragmentStoriesBinding.storiesPager.setCurrentItem(position - 1,false)
-                }
-                else{
-                    (context as StoryActivity).onBackPressed()
-                }
-            }
+            goToPreviousViewPagerElement()
         }
     }
 
@@ -306,12 +342,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
 
     }
 
-    override fun onScroll(
-        e1: MotionEvent?,
-        e2: MotionEvent?,
-        distanceX: Float,
-        distanceY: Float
-    ): Boolean {
+    override fun onScroll(e1: MotionEvent?, e2: MotionEvent?, distanceX: Float, distanceY: Float): Boolean {
         return true
     }
 
@@ -322,5 +353,23 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
     override fun onSingleTapUp(e: MotionEvent?): Boolean {
         goToNext()
         return true
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+    fun pauseStories(){
+        isPaused = true
+        simpleExoPlayer?.playWhenReady = false
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    fun resumeStories(){
+        isPaused = false
+        simpleExoPlayer?.playWhenReady = true
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    fun garbageCollector(){
+        simpleExoPlayer?.release()
+        simpleExoPlayer = null
     }
 }
