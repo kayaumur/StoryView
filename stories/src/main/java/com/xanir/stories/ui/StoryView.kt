@@ -18,7 +18,10 @@ import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.GestureDetectorCompat
-import androidx.lifecycle.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.OnLifecycleEvent
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
@@ -49,6 +52,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
     private var currentStoryNumber = 0
     private lateinit var timer : CountDownTimer
     private var isPaused = false
+    private var isRecentlyPaused = false
     private var totalDuration = 5000
     private var currentDuration = 0
     private var simpleExoPlayer : SimpleExoPlayer? = null
@@ -83,8 +87,6 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
     private fun init(context: Context) {
         (context as LifecycleOwner).lifecycle.addObserver(this)
         storyViewBinding = StoryViewBinding.inflate(LayoutInflater.from(context), this, true)
-        //TODO If first element of view pager, remove it
-        //TODO Make it lifecycle aware to pause timers/stop player etc.
         storyViewBinding.storyGoPrevious.setOnClickListener { goToPrevious() }
         gestureDetector = GestureDetectorCompat(context, this)
     }
@@ -98,10 +100,26 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
         storyViewBinding.containerImage.visibility = GONE
 
         storyViewBinding.containerImage.setOnTouchListener{ v, ev ->
-            gestureDetector.onTouchEvent(ev)
+            val detectedUp = ev.action == MotionEvent.ACTION_UP
+            val gesture = gestureDetector.onTouchEvent(ev)
+            if(!gesture && detectedUp){
+                resumeStories()
+                return@setOnTouchListener true
+            }
+            else{
+                return@setOnTouchListener gesture
+            }
         }
         storyViewBinding.playerView.setOnTouchListener{ v, ev ->
-            gestureDetector.onTouchEvent(ev)
+            val detectedUp = ev.action == MotionEvent.ACTION_UP
+            val gesture = gestureDetector.onTouchEvent(ev)
+            if(!gesture && detectedUp){
+                resumeStories()
+                return@setOnTouchListener true
+            }
+            else{
+                return@setOnTouchListener gesture
+            }
         }
         for(story in stories.story){
             val view = StoryProgressBarBinding.inflate(LayoutInflater.from(context))
@@ -152,7 +170,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
                 resource: Drawable?, model: Any?, target: Target<Drawable>?,
                 dataSource: com.bumptech.glide.load.DataSource?, isFirstResource: Boolean
             ): Boolean {
-                (context as AppCompatActivity).runOnUiThread {
+                (context as StoryActivity).runOnUiThread {
                     Glide.with(context).load(resource).apply(
                         RequestOptions().override
                             (storyViewBinding.root.width, storyViewBinding.root.height)
@@ -183,12 +201,11 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
             }
             this.addListener(object : Player.EventListener {
                 override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
-                    super.onPlayerStateChanged(playWhenReady, playbackState)
-                    if (playbackState == Player.STATE_READY && playWhenReady) {
+                    if (playbackState == Player.STATE_READY && playWhenReady && !isRecentlyPaused) {
                         simpleExoPlayer?.let {
                             remainingTimeBar[currentStoryNumber].max = it.duration.toInt()
                             remainingTimeBar[currentStoryNumber].incrementProgressBy(1)
-                            createTimer(it.contentDuration)
+                            createTimer(it.duration)
                             timer.start()
                         }
                     } else if (playbackState == Player.STATE_ENDED) {
@@ -203,6 +220,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
     private fun createTimer(time: Long) : CountDownTimer {
         totalDuration = time.toInt()
         currentDuration = 0
+        val flag = false
         timer = object : CountDownTimer(60000, 100) {
             override fun onTick(l: Long) {
                 if(currentDuration >= totalDuration){
@@ -218,8 +236,10 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
                     animation.duration = 100
                     animation.interpolator = LinearInterpolator()
                     animation.start()
+                    if(flag){
+                        isRecentlyPaused = false
+                    }
                 }
-
             }
 
             override fun onFinish() {
@@ -317,7 +337,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
     }
 
     override fun onDown(e: MotionEvent?): Boolean {
-        isPaused = true
+        pauseStories()
         return true
     }
 
@@ -358,6 +378,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
     @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     fun pauseStories(){
         isPaused = true
+        isRecentlyPaused = true
         simpleExoPlayer?.playWhenReady = false
     }
 

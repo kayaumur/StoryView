@@ -2,6 +2,6 @@
     package="com.xanir.stories">
     <uses-permission android:name="android.permission.INTERNET"/>
     <application android:usesCleartextTraffic="true">
-        <activity android:name=".StoryActivity"/>
+        <activity android:name=".StoryActivity" android:screenOrientation="portrait" android:configChanges="orientation|keyboard|keyboardHidden"/>
     </application>
 </manifest>

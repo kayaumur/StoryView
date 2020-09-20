@@ -47,6 +47,7 @@ class StoriesFragment : Fragment() {
         story2.isSeen = false
         story2.isVideo = true
         storyGroup.story.add(0,story2)
+        storyGroup.story.add(0,story2)
         storyGroup.userId = 1
         storyGroup.userName = "Test"
         storyGroup.userProfilePicture = "https://media-exp1.licdn.com/dms/image/C5603AQF3AMeNui664g/profile-displayphoto-shrink_200_200/0?e=1605744000&v=beta&t=UuibqxVAwW6iYhbJ3_ncESK24r-nbERMdJaxqfIpZFI"
