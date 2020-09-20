@@ -26,9 +26,12 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource
 import com.google.android.exoplayer2.upstream.DataSource
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
 import com.google.android.exoplayer2.util.Util
+import com.xanir.stories.StoryActivity
 import com.xanir.stories.databinding.StoryProgressBarBinding
 import com.xanir.stories.databinding.StoryViewBinding
 import com.xanir.stories.models.StoryGroup
+import com.xanir.stories.pagination.StoriesFragment
+import com.xanir.stories.pagination.StoriesRootFragment
 import kotlin.math.abs
 
 
@@ -236,8 +239,16 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
                 loadVideo(stories?.story!![currentStoryNumber].storyUrl)
             }
         }
-        else if(true){
-            //TODO Next view pager element
+        else if(context is StoryActivity){
+            (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
+                val position = it.fragmentStoriesBinding.storiesPager.currentItem
+                if(it.fragmentStoriesBinding.storiesPager.adapter!!.itemCount > position + 1){
+                    it.fragmentStoriesBinding.storiesPager.setCurrentItem(position + 1,false)
+                }
+                else{
+                    (context as StoryActivity).onBackPressed()
+                }
+            }
         }
     }
 
@@ -256,8 +267,16 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener{
             }
             remainingTimeBar[currentStoryNumber].progress = 0
         }
-        else if(true){
-            //TODO Prev view pager element
+        else if(context is StoryActivity){
+            (context as StoryActivity).supportFragmentManager.fragments.firstOrNull { fragment -> fragment is StoriesRootFragment }?.let {it as StoriesRootFragment
+                val position = it.fragmentStoriesBinding.storiesPager.currentItem
+                if(position > 0){
+                    it.fragmentStoriesBinding.storiesPager.setCurrentItem(position - 1,false)
+                }
+                else{
+                    (context as StoryActivity).onBackPressed()
+                }
+            }
         }
     }
 
