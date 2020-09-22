@@ -99,7 +99,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
             val detectedUp = ev.action == MotionEvent.ACTION_UP
             val gesture = gestureDetector.onTouchEvent(ev)
             if(!gesture && detectedUp){
-                resumeStories()
+                resumeWithoutRecently()
                 return@setOnTouchListener true
             }
             else{
@@ -110,7 +110,6 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
             val detectedUp = ev.action == MotionEvent.ACTION_UP
             val gesture = gestureDetector.onTouchEvent(ev)
             if(!gesture && detectedUp){
-                isRecentlyReleased = true
                 resumeStories()
                 return@setOnTouchListener true
             }
@@ -201,6 +200,7 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
                 override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
                     if (playbackState == Player.STATE_READY && playWhenReady && !isRecentlyReleased) {
                         simpleExoPlayer?.let {
+                            it.seekTo(0)
                             remainingTimeBar[currentStoryNumber].max = it.duration.toInt()
                             isPaused.set(false)
                             createTimer(it.duration).start()
@@ -394,6 +394,12 @@ class StoryView : ConstraintLayout ,GestureDetector.OnGestureListener,LifecycleO
 
     @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
     fun resumeStories(){
+        isRecentlyReleased = true
+        simpleExoPlayer?.playWhenReady = true
+        isPaused.set(false)
+    }
+
+    private fun resumeWithoutRecently(){
         simpleExoPlayer?.playWhenReady = true
         isPaused.set(false)
     }
